@@ -1,0 +1,242 @@
+library(shinydashboard)
+library(shiny)
+library(fpp3)
+library(ggeasy)
+library(plotly)
+library(ggthemes)
+ui<-dashboardPage(skin="purple",
+  dashboardHeader(title="Final Project: Alissa Gordon", titleWidth = 300),
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Instructions", tabName = "instructions"),
+      menuItem("Plots", tabName = "plots"),
+      menuItem("Simple Forecasting",tabName="forecasts"),
+      menuItem("ETS models", tabName = "ets"),
+      menuItem("ARIMA inputs", 
+               numericInput("p", "p", 1, min=0),
+               numericInput("d","d", 1, min=0),
+               numericInput("q","q",1, min=0),
+               numericInput("P","P", 1, min=0),
+               numericInput("D","D",1, min=0),
+               numericInput("Q","Q",1, min=0)
+               
+               
+      ),
+      menuItem("ARIMA models", tabName = "arima"),
+      
+      menuItem("Interpretations", tabName = "interp"),
+      sliderInput("quarters",
+                  label="Quarters to be Forecasted",min=1, max=100,
+                  value=20)
+    )
+  ),
+  dashboardBody(
+    tabItems(
+      tabItem(tabName="instructions",
+            p("Welcome! On this shiny app, you will be able to explore electricity production in Australia. The data, aus_production, comes from the fpp3 package.", style = "font-family: 'times'; font-si16pt"),
+            p("In the tab Plots, you will see a plot of the data with also a plot of your choosing. Use the first sidebar drop down, Additional Plot, to choose a plot showing seasonality, autocorrelation, or the multiplicative decomposition of our data.", style = "font-family: 'times'; font-si16pt"),
+            p("In the third tab, Simple Forecasting, you will see a plot showing you different forecasted values of the data. Use the drop down to select which ones you see. The Naive forecast uses the last observed value. The Seasonal Naive forecasts using the same seasonal values from the last seasonal cycle. The Drift method forecasts by extrapolating a line between the first and last observed values. The Mean forecasts using the average of the dataset", style = "font-family: 'times'; font-si16pt"),
+            p("Under ETS, you will see different exponential smoothing models. Use the drop down to select which ones you see. Holts is an exponential smoothing model that takes into account trend. Holts Winter takes into account trend and seasonality. For this model, a multiplicative seasonal component was added due to the increasing seasonality over time.",style = "font-family: 'times'; font-si16pt"),
+            p("The ARIMA tab will show you different ARIMA models. Manual ARIMA allows you to input different parameters, which can be accessed under the ARIMA inputs tab. Auto ARIMA will show you the best calculated ARIMA model."),
+            p("Finally, in the last tab, Interpretations, you will find  interpretations of the data.", style = "font-family: 'times'; font-si16pt"),
+            p("Use the sidebar option Quarters to be Forecasted to set how many quarters you want to forecast in the different tabs"), style = "font-family: 'times'; font-si16pt"),
+    tabItem(tabName="plots",
+            selectInput(inputId = "plottype",
+                                        label = "Additional Plot",
+                                        choices = c("Seasonality","Autocorrelation", "Decomposition"),
+                                        selected = "Seasonality") ,
+            
+            fluidRow(box(plotlyOutput("plot1")),box(plotOutput("plot2")  )        ) ),
+    tabItem(tabName="forecasts",
+            selectInput("forecasttype", label="Simple Forecasting",choices=c("All","Drift", "Naive", "Seasonal_Naive", "Mean"), selected="All"),
+            plotOutput("forecasting"),
+            p("Note that some models may be better suited for short term predictions while others may be better suited for long term predictions. Because of the strong upwards trend, the naive and seasonal naive models may be less relevant as the forecasting time frame increases.", style = "font-family: 'times'; font-si16pt")),
+    tabItem(tabName = "ets",
+            
+            selectInput("type", label="ETS",choices=c("All","Holts", "Holts Winter"), selected="All"),
+            
+            plotOutput("ets")),
+    tabItem(tabName = "arima",
+           
+            
+            selectInput("arim", label="ARIMA", choices = c("All","Manual ARIMA", "Auto ARIMA"), selected="All")
+            
+            ,plotOutput("arima")),
+    tabItem(tabName = "interp",
+            p("From the general plot of electricity production, we can observe a strong upwards trend. This makes sense considering the increasing energy usage around the world. We can also observe a seasonal trend with peaks at Q3 and lows at Q1. This could be due to Q3 (July, August,September) being the winter time in Australia. Electricity usage tends to be higher in the winter time due to the usage of heaters. There seems to be no obvious cyclical trend", style = "font-family: 'times'; font-si16pt"),
+            p("The seasonality plot further backs the observation that there are peaks of electricity production in Q3. The plot shows that energy consumption starts to increase at Q1 and decreases after Q3. Further, the yearly breakdown further backs the observation that production has increased over the years.", style = "font-family: 'times'; font-si16pt"),
+            p("Looking at the ACF plot, it becomes apparent that high autocorrelation is present. Because of this, we know that if we have the previous quarter's value, we can create a good estimate for the next quarter. Since the autocorrelation is large and positive, this offers further evidence that a trend is present in the data. ", style = "font-family: 'times'; font-si16pt"),
+            p("From the decomposition plot, we can see that trend has the biggest effect on the plot due to its small dime size. The dime sizes are fairly close for the seasonal component and left over component, meaning they have a similar sized influence on the patterns in the data. Although the seasonal component is easy to pick out in the original plot, this shows us that the biggest influence on our data is the upwards trend. This makes sense as electrical consumption has drastically increased as we rely more on new technologies in our every day lives.", style = "font-family: 'times'; font-si16pt")
+    
+            
+            )
+            )
+    )
+    
+            )
+            
+            )
+  )
+)
+server <- function(input, output) {
+  output$plot1<-renderPlotly(
+    aus_production %>% 
+      select("Electricity") %>% 
+      autoplot()  +labs(title = paste("Quarterly Australian Production of Electricity" ),
+                        y = "Electricity", x = "Quarter [1Q]")+ theme_stata()+theme(plot.title = element_text(size=10)) 
+    
+  )
+  output$ets<-renderPlot(
+    if (input$type=="All"){
+      aus_production %>% 
+        select(Electricity) %>% 
+        model(
+          Holts=ETS(Electricity~error("A")+trend("A")+season("N")),
+          Holts_Winters=ETS(Electricity~error("M")+trend("A")+season("M"))
+          
+          
+        ) %>% 
+        forecast(h=input$quarters) %>% 
+        autoplot(aus_production)+labs(title = paste("Quarterly Australian Production of Electricity" ),
+                                       y = "Electricity", x = "Quarter [1Q]")+ theme_stata()} 
+      else if (input$type=="Holts"){
+      aus_production %>% 
+        select(Electricity) %>% 
+        model(
+          Holts=ETS(Electricity~error("A")+trend("A")+season("N")),
+          
+          
+          
+        ) %>% 
+        forecast(h=input$quarters) %>% 
+        autoplot(aus_production)+labs(title = paste("Quarterly Australian Production of Electricity" ),
+                                      y = "Electricity", x = "Quarter [1Q]")+ theme_stata()
+    }
+    else{aus_production %>% 
+        select(Electricity) %>% 
+        model(
+          
+          Holts_Winters=ETS(Electricity~error("M")+trend("A")+season("M"))
+          
+          
+        ) %>% 
+        forecast(h=input$quarters) %>% 
+        autoplot(aus_production)+labs(title = paste("Quarterly Australian Production of Electricity" ),
+                                      y = "Electricity", x = "Quarter [1Q]")+ theme_stata()}
+  )
+  
+  output$arima<-renderPlot(
+    if(input$arim=="All"){
+      aus_production %>% 
+        select(Electricity) %>% 
+        model(
+          manualarima=ARIMA(Electricity~pdq(input$p,input$d,input$q) + PDQ(input$P,input$D,input$Q)),
+          autoarima=ARIMA(Electricity)
+          
+          
+        ) %>% 
+        forecast(h=input$quarters) %>% 
+        autoplot(aus_production)+labs(title = paste("Quarterly Australian Production of Electricity" ),
+                                      y = "Electricity", x = "Quarter [1Q]")+ theme_stata()
+    }
+    else if(input$arim=="Manual ARIMA"){
+      aus_production %>% 
+        select(Electricity) %>% 
+        model(
+          manualarima=ARIMA(Electricity~pdq(input$p,input$d,input$q) + PDQ(input$P,input$D,input$Q)),
+          
+          
+        ) %>% 
+        forecast(h=input$quarters) %>% 
+        autoplot(aus_production)+labs(title = paste("Quarterly Australian Production of Electricity" ),
+                                      y = "Electricity", x = "Quarter [1Q]")+ theme_stata()
+    }
+    else{
+      aus_production %>% 
+        select(Electricity) %>% 
+        model(
+          
+          autoarima=ARIMA(Electricity)
+          
+          
+        ) %>% 
+        forecast(h=input$quarters) %>% 
+        autoplot(aus_production)+labs(title = paste("Quarterly Australian Production of Electricity" ),
+                                      y = "Electricity", x = "Quarter [1Q]")+ theme_stata()
+    }
+  )
+  output$plot2<-renderPlot(
+    if(input$plottype=="Seasonality"){
+      aus_production %>% 
+        select("Electricity") %>% 
+        gg_season() +theme_stata()+theme(legend.position="right")
+    }else if(input$plottype=="Autocorrelation"){
+      aus_production %>% 
+        select("Electricity") %>% 
+        ACF() %>% 
+        autoplot()+ theme_stata() 
+    } else {
+      dcmp<-aus_production %>% 
+        select("Electricity") %>% 
+        model(classical_decomposition(Electricity, type='multiplicative')) 
+      components(dcmp) %>% 
+        autoplot()+theme_stata()
+      
+    }
+  )
+  output$forecasting<-renderPlot(
+    if (input$forecasttype=="All"){
+      aus_production %>% 
+        select(Electricity) %>% 
+        model(
+          Naive=NAIVE(Electricity),
+          Seasonal_Naive=SNAIVE(Electricity),
+          Mean=MEAN(Electricity),
+          Drift=RW(Electricity~drift())
+        ) %>% 
+        forecast(h=input$quarters) %>% 
+        autoplot(aus_production)+labs(title = paste("Quarterly Australian Production of Electricity" ),
+                                      y = "Electricity", x = "Quarter [1Q]")+ theme_stata()}
+    else if(input$forecasttype=="Naive"){
+      aus_production %>% 
+        select(Electricity) %>% 
+        model(
+          Naive=NAIVE(Electricity)
+        ) %>% 
+        forecast(h=input$quarters) %>% 
+        autoplot(aus_production)+labs(title = paste("Quarterly Australian Production of Electricity" ),
+                                      y = "Electricity", x = "Quarter [1Q]")+ theme_stata()}
+    else if(input$forecasttype=="Drift"){
+      aus_production %>% 
+        select(Electricity) %>% 
+        model(
+          Drift=RW(Electricity~drift())
+        ) %>% 
+        forecast(h=input$quarters) %>% 
+        autoplot(aus_production)+labs(title = paste("Quarterly Australian Production of Electricity" ),
+                                      y = "Electricity", x = "Quarter [1Q]")+ theme_stata()}
+    else if(input$forecasttype=="Mean"){
+      aus_production %>% 
+        select(Electricity) %>% 
+        model(
+          Mean=MEAN(Electricity)
+        ) %>% 
+        forecast(h=input$quarters) %>% 
+        autoplot(aus_production)+labs(title = paste("Quarterly Australian Production of Electricity" ),
+                                      y = "Electricity", x = "Quarter [1Q]")+ theme_stata()
+    }
+    else{
+      aus_production %>% 
+        select(Electricity) %>% 
+        model(
+          Seasonal_Naive=SNAIVE(Electricity)
+        ) %>% 
+        forecast(h=input$quarters) %>% 
+        autoplot(aus_production)+labs(title = paste("Quarterly Australian Production of Electricity" ),
+                                      y = "Electricity", x = "Quarter [1Q]")+ theme_stata()
+      
+    }
+  )
+}
+
+shinyApp(ui, server)
